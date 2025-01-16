@@ -1,5 +1,5 @@
 import { Controller, Get, Post, Body, Param, Inject, ParseUUIDPipe, Query, Patch } from '@nestjs/common';
-import { ORDER_SERVICE } from 'src/config';
+import { NATS_SERVICE } from 'src/config';
 import { ClientProxy, RpcException } from '@nestjs/microservices';
 import { CreateOrderDto, OrderPaginationDto, StatusDto } from './dto';
 import { firstValueFrom } from 'rxjs';
@@ -8,25 +8,34 @@ import { PaginationDto } from 'src/common';
 @Controller('orders')
 export class OrdersController {
   constructor(
-    @Inject(ORDER_SERVICE) private readonly ordersCLient: ClientProxy,
+    @Inject(NATS_SERVICE) private readonly client: ClientProxy,
   ) {}
 
   @Post()
   create(@Body() createOrderDto: CreateOrderDto) {
-    return this.ordersCLient.send('createOrder', createOrderDto);
+    return this.client.send('createOrder', createOrderDto);
   }
 
   @Get()
-  findAll(@Query() orderPaginationDto: OrderPaginationDto ) {
+  async findAll(@Query() orderPaginationDto: OrderPaginationDto ) {
 
-    return this.ordersCLient.send('findAllOrders', orderPaginationDto);
+    try {
+      const orders = await firstValueFrom(
+        this.client.send('findAllOrders', orderPaginationDto)
+      )
+
+      return orders;
+
+    } catch (error) {
+      throw new RpcException(error);
+    }
   }
 
   @Get('id/:id')
   async findOne(@Param('id', ParseUUIDPipe ) id: string) {
     try {
       const order = await firstValueFrom(
-        this.ordersCLient.send('findOneOrder', { id })
+        this.client.send('findOneOrder', { id })
       );
 
       return order;
@@ -43,7 +52,7 @@ export class OrdersController {
   ) {
     try {
 
-      return this.ordersCLient.send('findAllOrders', {
+      return this.client.send('findAllOrders', {
         ...paginationDto,
         status: statusDto.status,
       });
@@ -59,7 +68,7 @@ export class OrdersController {
     @Body() statusDto: StatusDto,
   ) {
     try {
-      return this.ordersCLient.send('changeOrderStatus', { 
+      return this.client.send('changeOrderStatus', { 
         id, 
         status: statusDto.status
       })
